@@ -1,0 +1,10 @@
+{{- define "mgr"}}
+package {{.pkg}}
+import "game/game_server/player"
+
+type {{upperCase .pkg}}Mgr struct {
+	pl *player.Player
+}
+{{end}}
+
+

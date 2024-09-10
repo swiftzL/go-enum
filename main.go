@@ -43,6 +43,7 @@ type rootT struct {
 	ForceUpper        bool
 	NoComments        bool
 	OutputSuffix      string
+	GameOut           string
 }
 
 func main() {
@@ -55,7 +56,7 @@ func main() {
 
 	app := &cli.App{
 		Name:            "go-enum",
-		Usage:           "An enum generator for go",
+		Usage:           "An enum generator for go 1",
 		HideHelpCommand: true,
 		Version:         version,
 		Flags: []cli.Flag{
@@ -180,6 +181,10 @@ func main() {
 				Usage:       "Changes the default filename suffix of _enum to something else.  `.go` will be appended to the end of the string no matter what, so that `_test.go` cases can be accommodated ",
 				Destination: &argv.OutputSuffix,
 			},
+			&cli.StringFlag{
+				Name:        "game_out",
+				Destination: &argv.GameOut,
+			},
 		},
 		Action: func(ctx *cli.Context) error {
 			aliases, err := generator.ParseAliases(argv.Aliases.Value())
@@ -273,35 +278,89 @@ func main() {
 					outputSuffix = argv.OutputSuffix
 				}
 
-				for _, fileName := range filenames {
-					originalName := fileName
+				if argv.GameOut == "1" {
+					for _, fileName := range filenames {
+						originalName := fileName
+						out("go game files generate", color.Cyan(originalName))
+						fileName, _ = filepath.Abs(fileName)
+						gamefiles := []string{"db", "handler", "mod", "mgr"}
+						for _, gamefileName := range gamefiles {
+							outFilePath := fmt.Sprintf(
+								"%s%s.go", strings.TrimSuffix(fileName, filepath.Ext(gamefileName)),
+								"_"+gamefileName,
+							)
+							if strings.HasSuffix(fileName, "_test.go") {
+								outFilePath = strings.Replace(
+									outFilePath, "_test"+outputSuffix+".go", outputSuffix+"_test.go", 1,
+								)
+							}
 
-					out("go-enum started. file: %s\n", color.Cyan(originalName))
-					fileName, _ = filepath.Abs(fileName)
+							// Parse the file given in arguments
+							fNode, err := g.ParseFile(fileName)
+							if err != nil {
+								return fmt.Errorf("generate: error parsing input file '%s': %s", fileName, err)
+							}
+							raw, err := g.GenerateGameFile(fNode, gamefileName)
+							if err != nil {
+								return fmt.Errorf(
+									"failed generating enums\nInputFile=%s\nError=%s", color.Cyan(fileName),
+									color.RedBg(err),
+								)
+							}
+							if len(raw) < 1 {
+								out(color.Yellow("go-enum ignored. file: %s\n"), color.Cyan(originalName))
+								continue
+							}
 
-					outFilePath := fmt.Sprintf("%s%s.go", strings.TrimSuffix(fileName, filepath.Ext(fileName)), outputSuffix)
-					if strings.HasSuffix(fileName, "_test.go") {
-						outFilePath = strings.Replace(outFilePath, "_test"+outputSuffix+".go", outputSuffix+"_test.go", 1)
+							mode := int(0o644)
+							err = os.WriteFile(outFilePath, raw, os.FileMode(mode))
+							if err != nil {
+								return fmt.Errorf(
+									"failed writing to file %s: %s", color.Cyan(outFilePath), color.Red(err),
+								)
+							}
+							out("go-enum finished. file: %s\n", color.Cyan(originalName))
+						}
+					}
+				} else {
+					for _, fileName := range filenames {
+						originalName := fileName
+
+						out("go-enum started. file: %s\n", color.Cyan(originalName))
+						fileName, _ = filepath.Abs(fileName)
+
+						outFilePath := fmt.Sprintf(
+							"%s%s.go", strings.TrimSuffix(fileName, filepath.Ext(fileName)), outputSuffix,
+						)
+						if strings.HasSuffix(fileName, "_test.go") {
+							outFilePath = strings.Replace(
+								outFilePath, "_test"+outputSuffix+".go", outputSuffix+"_test.go", 1,
+							)
+						}
+
+						// Parse the file given in arguments
+						raw, err := g.GenerateFromFile(fileName)
+						if err != nil {
+							return fmt.Errorf(
+								"failed generating enums\nInputFile=%s\nError=%s", color.Cyan(fileName),
+								color.RedBg(err),
+							)
+						}
+
+						// Nothing was generated, ignore the output and don't create a file.
+						if len(raw) < 1 {
+							out(color.Yellow("go-enum ignored. file: %s\n"), color.Cyan(originalName))
+							continue
+						}
+
+						mode := int(0o644)
+						err = os.WriteFile(outFilePath, raw, os.FileMode(mode))
+						if err != nil {
+							return fmt.Errorf("failed writing to file %s: %s", color.Cyan(outFilePath), color.Red(err))
+						}
+						out("go-enum finished. file: %s\n", color.Cyan(originalName))
 					}
 
-					// Parse the file given in arguments
-					raw, err := g.GenerateFromFile(fileName)
-					if err != nil {
-						return fmt.Errorf("failed generating enums\nInputFile=%s\nError=%s", color.Cyan(fileName), color.RedBg(err))
-					}
-
-					// Nothing was generated, ignore the output and don't create a file.
-					if len(raw) < 1 {
-						out(color.Yellow("go-enum ignored. file: %s\n"), color.Cyan(originalName))
-						continue
-					}
-
-					mode := int(0o644)
-					err = os.WriteFile(outFilePath, raw, os.FileMode(mode))
-					if err != nil {
-						return fmt.Errorf("failed writing to file %s: %s", color.Cyan(outFilePath), color.Red(err))
-					}
-					out("go-enum finished. file: %s\n", color.Cyan(originalName))
 				}
 			}
 
@@ -322,7 +381,9 @@ func globFilenames(filename string) ([]string, error) {
 	if strings.Contains(filename, "*") {
 		matches, err := filepath.Glob(filename)
 		if err != nil {
-			return []string{}, fmt.Errorf("failed parsing glob filepath\nInputFile=%s\nError=%s", color.Cyan(filename), color.RedBg(err))
+			return []string{}, fmt.Errorf(
+				"failed parsing glob filepath\nInputFile=%s\nError=%s", color.Cyan(filename), color.RedBg(err),
+			)
 		}
 		return matches, nil
 	} else {

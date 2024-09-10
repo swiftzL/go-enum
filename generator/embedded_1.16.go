@@ -8,7 +8,7 @@ import (
 	"text/template"
 )
 
-//go:embed enum.tmpl enum_string.tmpl
+//go:embed enum.tmpl enum_string.tmpl db.tmpl mod.tmpl handler.tmpl mgr.tmpl
 var content embed.FS
 
 func (g *Generator) addEmbeddedTemplates() {

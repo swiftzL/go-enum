@@ -239,16 +239,18 @@ func TestAliasParsing(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			replacementNames, err := ParseAliases(tc.input)
-			if tc.err != nil {
-				require.Error(t, err)
-				require.EqualError(t, err, tc.err.Error())
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.resultingMap, replacementNames)
-			}
-		})
+		t.Run(
+			name, func(t *testing.T) {
+				replacementNames, err := ParseAliases(tc.input)
+				if tc.err != nil {
+					require.Error(t, err)
+					require.EqualError(t, err, tc.err.Error())
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, tc.resultingMap, replacementNames)
+				}
+			},
+		)
 	}
 }
 

@@ -1,0 +1,64 @@
+{{- define "db"}}
+package {{.pkg}}
+
+import (
+    "fmt"
+    "game/common"
+    "game/core/db"
+	"game/util"
+    "reflect"
+)
+
+{{ range $rIndex, $tableName := .tableNames }}
+var {{$tableName}}Type reflect.Type = reflect.TypeOf((*{{$tableName}})(nil)).Elem()
+{{- end}}
+
+func initDb() {
+{{ range $rIndex, $tableName := .tableNames }}
+	db.InitContainer({{$tableName}}Type, false)
+{{- end}}
+}
+{{ range $rIndex, $tableName := .tableNames }}
+func Set{{$tableName}}Data(data *{{$tableName}}) {
+	db.Replace({{$tableName}}Type, data)
+}
+{{- end}}
+
+{{ range $rIndex, $tableName := .tableNames }}
+func Del{{$tableName}}Data(data *{{$tableName}}) {
+	db.Delete({{$tableName}}Type, data)
+}
+{{- end}}
+
+{{ range $rIndex, $tableDetail := .tableDetails }}
+func GetAll{{$tableDetail.TableName}}({{lowerCase (index $tableDetail.PrimaryKeys 0)}} {{index $tableDetail.PrimaryKeyTypes 0}}) []*{{$tableDetail.TableName}} {
+	return util.ConvertInterface[*{{$tableDetail.TableName}}](db.LookupObjs({{$tableDetail.TableName}}Type, {{lowerCase (index $tableDetail.PrimaryKeys 0)}}))
+}
+{{- end}}
+//get singole
+
+{{ range $rIndex, $tableDetail := .tableDetails }}
+func Get{{$tableDetail.TableName}}({{range $p_idx, $p_key := $tableDetail.PrimaryKeys}}{{lowerCase $p_key}} {{lowerCase (index $tableDetail.PrimaryKeyTypes $p_idx)}}, {{- end}}) *{{$tableDetail.TableName}} {
+	lookup := db.Lookup({{$tableDetail.TableName}}Type, {{range $p_idx, $p_key := $tableDetail.PrimaryKeys}}{{lowerCase $p_key}}, {{- end}})
+	if lookup == nil {
+	    return nil
+	}
+	return lookup.(*{{$tableDetail.TableName}})
+}
+{{- end}}
+
+{{ range $rIndex, $tableDetail := .tableDetails }}
+func GetOrCreate{{$tableDetail.TableName}}({{range $p_idx, $p_key := $tableDetail.PrimaryKeys}}{{lowerCase $p_key}} {{lowerCase (index $tableDetail.PrimaryKeyTypes $p_idx)}}, {{- end}}) *{{$tableDetail.TableName}} {
+	lookup := db.Lookup({{$tableDetail.TableName}}Type,{{range $p_idx, $p_key := $tableDetail.PrimaryKeys}}{{lowerCase $p_key}}, {{- end}})
+	if lookup == nil {
+	    newObj := createNew{{$tableDetail.TableName}}({{range $p_idx, $p_key := $tableDetail.PrimaryKeys}}{{lowerCase $p_key}}, {{- end}})
+	    Set{{$tableDetail.TableName}}Data(newObj)
+	    return newObj
+	}
+	return lookup.(*{{$tableDetail.TableName}})
+}
+{{- end}}
+{{end}}
+
+
+

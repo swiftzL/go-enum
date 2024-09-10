@@ -8,11 +8,13 @@ import (
 	"go/parser"
 	"go/token"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Masterminds/sprig/v3"
 	"golang.org/x/text/cases"
@@ -99,7 +101,25 @@ func NewGenerator() *Generator {
 	funcs["unmapify"] = Unmapify
 	funcs["namify"] = Namify
 	funcs["offset"] = Offset
+	funcs["lowerCase"] = func(s string) string {
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if c >= utf8.RuneSelf {
+				return s
+			}
+		}
+		return strings.ToLower(s[0:1]) + s[1:len(s)]
+	}
 
+	funcs["upperCase"] = func(s string) string {
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if c >= utf8.RuneSelf {
+				return s
+			}
+		}
+		return strings.ToUpper(s[0:1]) + s[1:len(s)]
+	}
 	g.t.Funcs(funcs)
 
 	g.addEmbeddedTemplates()
@@ -270,11 +290,80 @@ func (g *Generator) WithTemplates(filenames ...string) *Generator {
 // GenerateFromFile is responsible for orchestrating the Code generation.  It results in a byte array
 // that can be written to any file desired.  It has already had goimports run on the code before being returned.
 func (g *Generator) GenerateFromFile(inputFile string) ([]byte, error) {
-	f, err := g.parseFile(inputFile)
+	f, err := g.ParseFile(inputFile)
 	if err != nil {
 		return nil, fmt.Errorf("generate: error parsing input file '%s': %s", inputFile, err)
 	}
 	return g.Generate(f)
+}
+
+// Generate Game Service
+type TableDetail struct {
+	TableName       string
+	PrimaryKeys     []string
+	PrimaryKeyTypes []string
+}
+
+func CreateTypeName(fieldType interface{}) string {
+	switch x := fieldType.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.SelectorExpr:
+		return x.X.(*ast.Ident).Name + "." + x.Sel.Name
+	}
+	panic("not find the type")
+}
+
+func TypeStructWrap2Detail(t *AstStructWrap) *TableDetail {
+	primaryKeys := make([]string, 0)
+	primaryKeyTypes := make([]string, 0)
+	for _, field := range t.StructType.Fields.List {
+		if field.Tag == nil {
+			continue
+		}
+		if strings.Contains(field.Tag.Value, "primaryKey") {
+			primaryKeys = append(primaryKeys, field.Names[0].Name)
+			primaryKeyTypes = append(primaryKeyTypes, CreateTypeName(field.Type))
+		}
+	}
+	return &TableDetail{
+		TableName:       t.Name,
+		PrimaryKeys:     primaryKeys,
+		PrimaryKeyTypes: primaryKeyTypes,
+	}
+}
+
+// Generate does the heavy lifting for the code generation starting from the parsed AST file.
+func (g *Generator) GenerateGameFile(f *ast.File, templateName string) ([]byte, error) {
+	pkg := f.Name.Name
+	vBuff := bytes.NewBuffer([]byte{})
+	collectStructs := g.collectStruct(f)
+	if len(collectStructs) == 0 {
+		return nil, errors.New("not find struct type")
+	}
+	tableNames := make([]string, 0)
+	for _, collectStruct := range collectStructs {
+		tableNames = append(tableNames, collectStruct.Name)
+	}
+	tableDetails := make([]*TableDetail, 0)
+	for _, theStruct := range collectStructs {
+		tableDetails = append(tableDetails, TypeStructWrap2Detail(theStruct))
+	}
+	data := map[string]interface{}{
+		"tableNames":   tableNames,
+		"pkg":          pkg,
+		"tableDetails": tableDetails,
+	}
+
+	err := g.t.ExecuteTemplate(vBuff, templateName, data)
+	if err != nil {
+		return vBuff.Bytes(), fmt.Errorf("failed writing enum data for enum: %q: %w", tableNames, err)
+	}
+	formatted, err := imports.Process(pkg, vBuff.Bytes(), nil)
+	if err != nil {
+		err = fmt.Errorf("generate: error formatting code %s\n\n%s", err, vBuff.String())
+	}
+	return formatted, err
 }
 
 // Generate does the heavy lifting for the code generation starting from the parsed AST file.
@@ -287,14 +376,16 @@ func (g *Generator) Generate(f *ast.File) ([]byte, error) {
 	pkg := f.Name.Name
 
 	vBuff := bytes.NewBuffer([]byte{})
-	err := g.t.ExecuteTemplate(vBuff, "header", map[string]interface{}{
-		"package":   pkg,
-		"version":   g.Version,
-		"revision":  g.Revision,
-		"buildDate": g.BuildDate,
-		"builtBy":   g.BuiltBy,
-		"buildTags": g.buildTags,
-	})
+	err := g.t.ExecuteTemplate(
+		vBuff, "header", map[string]interface{}{
+			"package":   pkg,
+			"version":   g.Version,
+			"revision":  g.Revision,
+			"buildDate": g.BuildDate,
+			"builtBy":   g.BuiltBy,
+			"buildTags": g.buildTags,
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed writing header: %w", err)
 	}
@@ -351,7 +442,9 @@ func (g *Generator) Generate(f *ast.File) ([]byte, error) {
 		for _, userTemplateName := range g.userTemplateNames {
 			err = g.t.ExecuteTemplate(vBuff, userTemplateName, data)
 			if err != nil {
-				return vBuff.Bytes(), fmt.Errorf("failed writing enum data for enum: %q, template: %v: %w", name, userTemplateName, err)
+				return vBuff.Bytes(), fmt.Errorf(
+					"failed writing enum data for enum: %q, template: %v: %w", name, userTemplateName, err,
+				)
 			}
 		}
 	}
@@ -376,8 +469,8 @@ func (g *Generator) updateTemplates() {
 	}
 }
 
-// parseFile simply calls the go/parser ParseFile function with an empty token.FileSet
-func (g *Generator) parseFile(fileName string) (*ast.File, error) {
+// ParseFile simply calls the go/parser ParseFile function with an empty token.FileSet
+func (g *Generator) ParseFile(fileName string) (*ast.File, error) {
 	// Parse the file given in arguments
 	return parser.ParseFile(g.fileSet, fileName, nil, parser.ParseComments)
 }
@@ -484,7 +577,14 @@ func (g *Generator) parseEnum(ts *ast.TypeSpec) (*Enum, error) {
 				}
 			}
 
-			ev := EnumValue{Name: name, RawName: rawName, PrefixedName: prefixedName, ValueStr: valueStr, ValueInt: data, Comment: comment}
+			ev := EnumValue{
+				Name:         name,
+				RawName:      rawName,
+				PrefixedName: prefixedName,
+				ValueStr:     valueStr,
+				ValueInt:     data,
+				Comment:      comment,
+			}
 			enum.Values = append(enum.Values, ev)
 			data = increment(data)
 		}
@@ -497,7 +597,9 @@ func (g *Generator) parseEnum(ts *ast.TypeSpec) (*Enum, error) {
 
 func isQuoted(s string) bool {
 	s = strings.TrimSpace(s)
-	return (strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`)) || (strings.HasPrefix(s, `'`) && strings.HasSuffix(s, `'`))
+	return (strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`)) || (strings.HasPrefix(
+		s, `'`,
+	) && strings.HasSuffix(s, `'`))
 }
 
 func trimQuotes(s string) string {
@@ -692,34 +794,92 @@ func trimAllTheThings(thing string) string {
 
 // inspect will walk the ast and fill a map of names and their struct information
 // for use in the generation template.
-func (g *Generator) inspect(f ast.Node) map[string]*ast.TypeSpec {
+
+type AstStructWrap struct {
+	Name       string
+	StructType *ast.StructType
+}
+
+func (g *Generator) collectStructs(spces []ast.Spec) []*AstStructWrap {
+	res := make([]*AstStructWrap, 0)
+	for _, spce := range spces {
+		typeSpace, ok := spce.(*ast.TypeSpec)
+		if !ok {
+			continue
+		}
+		typeStruct, ok := typeSpace.Type.(*ast.StructType)
+		if !ok {
+			continue
+		}
+		asw := &AstStructWrap{
+			Name:       typeSpace.Name.Name,
+			StructType: typeStruct,
+		}
+		res = append(res, asw)
+	}
+	return res
+}
+
+func (g *Generator) collectStruct(f ast.Node) []*AstStructWrap {
+	fnode, ok := f.(*ast.File)
+	if !ok {
+		return nil
+	}
+	res := make([]*AstStructWrap, 0)
+	for _, decl := range fnode.Decls {
+		switch x := decl.(type) {
+		case *ast.GenDecl:
+			res = append(res, g.collectStructs(x.Specs)...)
+		default:
+			continue
+		}
+	}
+	//filter
+	return slices.DeleteFunc(
+		res, func(asw *AstStructWrap) bool {
+			for _, field := range asw.StructType.Fields.List {
+				if field.Tag == nil {
+					continue
+				}
+				if strings.Contains(field.Tag.Value, "primaryKey") {
+					return false
+				}
+			}
+			return true
+		},
+	)
+}
+
+func (g *Generator) inspect(f ast.Node) map[string]*ast.TypeSpec { //check find use generation template
 	enums := make(map[string]*ast.TypeSpec)
 	// Inspect the AST and find all structs.
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.GenDecl:
-			copyGenDeclCommentsToSpecs(x)
-		case *ast.Ident:
-			if x.Obj != nil {
-				// fmt.Printf("Node: %#v\n", x.Obj)
-				// Make sure it's a Type Identifier
-				if x.Obj.Kind == ast.Typ {
-					// Make sure it's a spec (Type Identifiers can be throughout the code)
-					if ts, ok := x.Obj.Decl.(*ast.TypeSpec); ok {
-						// fmt.Printf("Type: %+v\n", ts)
-						isEnum := isTypeSpecEnum(ts)
-						// Only store documented enums
-						if isEnum {
-							// fmt.Printf("EnumType: %T\n", ts.Type)
-							enums[x.Name] = ts
+	ast.Inspect(
+		f, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.GenDecl:
+				copyGenDeclCommentsToSpecs(x)
+			case *ast.Ident:
+				if x.Obj != nil {
+					// fmt.Printf("Node: %#v\n", x.Obj)
+					// Make sure it's a Type Identifier
+					if x.Obj.Kind == ast.Typ {
+						// Make sure it's a spec (Type Identifiers can be throughout the code)
+						if ts, ok := x.Obj.Decl.(*ast.TypeSpec); ok {
+							// fmt.Printf("Type: %+v\n", ts)
+							isEnum := isTypeSpecEnum(ts)
+							// Only store documented enums
+							if isEnum {
+								// fmt.Printf("EnumType: %T\n", ts.Type)
+								enums[x.Name] = ts
+							}
 						}
 					}
 				}
 			}
-		}
-		// Return true to continue through the tree
-		return true
-	})
+			// Return true to continue through the tree find all nodes
+			return true
+		},
+	)
 
 	return enums
 }

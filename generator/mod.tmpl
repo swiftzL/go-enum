@@ -1,0 +1,38 @@
+{{- define "mod"}}
+package {{.pkg}}
+import (
+	"game/core/db"
+	"game/game_server/player"
+)
+
+type {{upperCase .pkg}}Mod struct {
+}
+
+func init() {
+	player.RegisterFiveRefreshFunc(func(p *player.Player, refresh player.FiveClockRefreshOptions) {
+
+	})
+}
+
+func (a {{upperCase .pkg}}Mod) AccInit(p *player.Player) {
+}
+
+func (a {{upperCase .pkg}}Mod) Login(p *player.Player) {
+
+}
+
+func (a {{upperCase .pkg}}Mod) Logout(p *player.Player) {
+
+}
+
+func (a {{upperCase .pkg}}Mod) Reconnect(p *player.Player) {
+
+}
+
+func (a {{upperCase .pkg}}Mod) DailyRefresh(p *player.Player, refresh player.DailyRefreshOptions) {
+}
+
+func (a {{upperCase .pkg}}Mod) GmReset(p *player.Player) {
+
+}
+{{end}}

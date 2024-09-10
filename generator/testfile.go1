@@ -1,0 +1,27 @@
+package generator
+
+// Behavior
+type SomeInterface interface {
+}
+
+// ENUM(UNION=7,PVP=6)
+type ShopType int
+
+type DeepInvade struct {
+	Sid        common.Sid `gorm:"primaryKey"` // 玩家ID
+	BuyCount          uint32 `gorm:"primaryKey"`
+	FightCount        uint32
+	ChallengeId       uint32
+	StartTime         common.Timestamp
+	RewardChallengeId uint32 //结算到第多少关了
+	MaxChallengeId    uint32 //最大的关卡
+}
+
+type DeepInvade2 struct {
+	BuyCount          uint32
+	FightCount        uint32
+	ChallengeId       uint32
+	StartTime         common.Timestamp
+	RewardChallengeId uint32 //结算到第多少关了
+	MaxChallengeId    uint32 //最大的关卡
+}

@@ -6,6 +6,8 @@ package generator
 import (
 	"fmt"
 	"go/parser"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -21,17 +23,22 @@ var testExampleFiles = map[string]string{
 
 // TestNoStructInputFile
 func Test118NoStructFile(t *testing.T) {
-	input := `package test
-	// Behavior
-	type SomeInterface interface{
-
+	open, err := os.Open("./testfile.go1")
+	if err != nil {
+		panic(err)
 	}
-	`
+	all, err := io.ReadAll(open)
+	if err != nil {
+		panic(err)
+	}
+	input := string(all)
 	g := NewGenerator().
 		WithoutSnakeToCamel()
 	f, err := parser.ParseFile(g.fileSet, "TestRequiredErrors", input, parser.ParseComments)
 	assert.Nil(t, err, "Error parsing no struct input")
 
+	serviceFile, err := g.GenerateGameFile(f, "mgr")
+	fmt.Println(string(serviceFile))
 	output, err := g.Generate(f)
 	assert.Nil(t, err, "Error generating formatted code")
 	if false { // Debugging statement
@@ -58,18 +65,20 @@ func Test118ExampleFile(t *testing.T) {
 		WithoutSnakeToCamel()
 
 	for name, testExample := range testExampleFiles {
-		t.Run(name, func(t *testing.T) {
-			// Parse the file given in arguments
-			imported, err := g.GenerateFromFile(testExample)
-			require.Nil(t, err, "Error generating formatted code")
+		t.Run(
+			name, func(t *testing.T) {
+				// Parse the file given in arguments
+				imported, err := g.GenerateFromFile(testExample)
+				require.Nil(t, err, "Error generating formatted code")
 
-			outputLines := strings.Split(string(imported), "\n")
-			cupaloy.SnapshotT(t, outputLines)
+				outputLines := strings.Split(string(imported), "\n")
+				cupaloy.SnapshotT(t, outputLines)
 
-			if false {
-				fmt.Println(string(imported))
-			}
-		})
+				if false {
+					fmt.Println(string(imported))
+				}
+			},
+		)
 	}
 }
 
@@ -85,18 +94,20 @@ func Test118ExampleFileMoreOptions(t *testing.T) {
 		WithForceLower().
 		WithTemplates(`../example/user_template.tmpl`)
 	for name, testExample := range testExampleFiles {
-		t.Run(name, func(t *testing.T) {
-			// Parse the file given in arguments
-			imported, err := g.GenerateFromFile(testExample)
-			require.Nil(t, err, "Error generating formatted code")
+		t.Run(
+			name, func(t *testing.T) {
+				// Parse the file given in arguments
+				imported, err := g.GenerateFromFile(testExample)
+				require.Nil(t, err, "Error generating formatted code")
 
-			outputLines := strings.Split(string(imported), "\n")
-			cupaloy.SnapshotT(t, outputLines)
+				outputLines := strings.Split(string(imported), "\n")
+				cupaloy.SnapshotT(t, outputLines)
 
-			if false {
-				fmt.Println(string(imported))
-			}
-		})
+				if false {
+					fmt.Println(string(imported))
+				}
+			},
+		)
 	}
 }
 
@@ -109,18 +120,20 @@ func Test118NoPrefixExampleFile(t *testing.T) {
 		WithFlag().
 		WithoutSnakeToCamel()
 	for name, testExample := range testExampleFiles {
-		t.Run(name, func(t *testing.T) {
-			// Parse the file given in arguments
-			imported, err := g.GenerateFromFile(testExample)
-			require.Nil(t, err, "Error generating formatted code")
+		t.Run(
+			name, func(t *testing.T) {
+				// Parse the file given in arguments
+				imported, err := g.GenerateFromFile(testExample)
+				require.Nil(t, err, "Error generating formatted code")
 
-			outputLines := strings.Split(string(imported), "\n")
-			cupaloy.SnapshotT(t, outputLines)
+				outputLines := strings.Split(string(imported), "\n")
+				cupaloy.SnapshotT(t, outputLines)
 
-			if false {
-				fmt.Println(string(imported))
-			}
-		})
+				if false {
+					fmt.Println(string(imported))
+				}
+			},
+		)
 	}
 }
 
@@ -133,18 +146,20 @@ func Test118NoPrefixExampleFileWithSnakeToCamel(t *testing.T) {
 		WithFlag()
 
 	for name, testExample := range testExampleFiles {
-		t.Run(name, func(t *testing.T) {
-			// Parse the file given in arguments
-			imported, err := g.GenerateFromFile(testExample)
-			require.Nil(t, err, "Error generating formatted code")
+		t.Run(
+			name, func(t *testing.T) {
+				// Parse the file given in arguments
+				imported, err := g.GenerateFromFile(testExample)
+				require.Nil(t, err, "Error generating formatted code")
 
-			outputLines := strings.Split(string(imported), "\n")
-			cupaloy.SnapshotT(t, outputLines)
+				outputLines := strings.Split(string(imported), "\n")
+				cupaloy.SnapshotT(t, outputLines)
 
-			if false {
-				fmt.Println(string(imported))
-			}
-		})
+				if false {
+					fmt.Println(string(imported))
+				}
+			},
+		)
 	}
 }
 
@@ -161,18 +176,20 @@ func Test118CustomPrefixExampleFile(t *testing.T) {
 		WithSQLNullStr().
 		WithPrefix("Custom_prefix_")
 	for name, testExample := range testExampleFiles {
-		t.Run(name, func(t *testing.T) {
-			// Parse the file given in arguments
-			imported, err := g.GenerateFromFile(testExample)
-			require.Nil(t, err, "Error generating formatted code")
+		t.Run(
+			name, func(t *testing.T) {
+				// Parse the file given in arguments
+				imported, err := g.GenerateFromFile(testExample)
+				require.Nil(t, err, "Error generating formatted code")
 
-			outputLines := strings.Split(string(imported), "\n")
-			cupaloy.SnapshotT(t, outputLines)
+				outputLines := strings.Split(string(imported), "\n")
+				cupaloy.SnapshotT(t, outputLines)
 
-			if false {
-				fmt.Println(string(imported))
-			}
-		})
+				if false {
+					fmt.Println(string(imported))
+				}
+			},
+		)
 	}
 }
 
@@ -216,16 +233,18 @@ func Test118AliasParsing(t *testing.T) {
 	}
 
 	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			replacementNames, err := ParseAliases(tc.input)
-			if tc.err != nil {
-				require.Error(t, err)
-				require.EqualError(t, err, tc.err.Error())
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.resultingMap, replacementNames)
-			}
-		})
+		t.Run(
+			name, func(t *testing.T) {
+				replacementNames, err := ParseAliases(tc.input)
+				if tc.err != nil {
+					require.Error(t, err)
+					require.EqualError(t, err, tc.err.Error())
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, tc.resultingMap, replacementNames)
+				}
+			},
+		)
 	}
 }
 
